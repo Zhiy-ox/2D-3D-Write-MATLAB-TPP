@@ -1,0 +1,25 @@
+# Claude Code local (personal) settings
+.claude/settings.local.json
+
+# macOS
+.DS_Store
+._*
+
+# Logs / replay
+*.log
+Log/
+
+# MATLAB transient
+*.asv
+*.mex*
+*.autosave
+slprj/
+.matlab_pref_codex/
+
+# Generated DLW toolpath output (build artifacts; regenerate from the matrices/BMPs)
+Generated_Scripts/
+Generated_Scripts_3D/
+Preview/
+
+# Third-party Aerotech .NET assemblies (proprietary; obtain from Aerotech, not redistributed here)
+Aerotech_DotNet/
