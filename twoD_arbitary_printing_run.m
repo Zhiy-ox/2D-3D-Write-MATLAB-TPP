@@ -64,6 +64,13 @@ fprintf(logFid, 'Run started: %s\r\n', currentTimestamp());
 fprintf(logFid, 'Manifest: %s\r\n', manifestPath);
 fprintf(logFid, 'Chunks: %d to %d\r\n', options.startChunk, options.endChunk);
 
+totalToRun = options.endChunk - options.startChunk + 1;
+estRange = chunkEstimatesForRange(manifest, options.startChunk, options.endChunk);
+doneCount = 0;
+runTic = tic;
+notifyProgress(options, makeProgressInfo('init', options, totalToRun, options.startChunk, ...
+    0, 0, computeEta(0, 0, estRange, totalToRun), '', NaN));
+
 for chunkIndex = options.startChunk:options.endChunk
     processUiEvents();
     stopIfRequested(Aerotech_Controller, task, options);
@@ -71,7 +78,11 @@ for chunkIndex = options.startChunk:options.endChunk
     scriptPath = manifest.scriptFiles{chunkIndex};
     fprintf('Chunk %d/%d: %s\n', chunkIndex, manifest.scriptCount, scriptPath);
     fprintf(logFid, 'START\t%d\t%s\t%s\r\n', chunkIndex, currentTimestamp(), scriptPath);
+    elapsedNow = toc(runTic);
+    notifyProgress(options, makeProgressInfo('start', options, totalToRun, chunkIndex, ...
+        doneCount, elapsedNow, computeEta(doneCount, elapsedNow, estRange, totalToRun), scriptPath, NaN));
 
+    chunkTic = tic;
     try
         task.Program.Run(scriptPath);
         processUiEvents();
@@ -85,13 +96,23 @@ for chunkIndex = options.startChunk:options.endChunk
         end
         rethrow(runErr);
     end
+    chunkDur = toc(chunkTic);
 
-    fprintf(logFid, 'DONE\t%d\t%s\r\n', chunkIndex, currentTimestamp());
+    fprintf(logFid, 'DONE\t%d\t%s\tdur=%.3f\telapsed=%.3f\r\n', ...
+        chunkIndex, currentTimestamp(), chunkDur, toc(runTic));
+    doneCount = doneCount + 1;
+    elapsedNow = toc(runTic);
+    notifyProgress(options, makeProgressInfo('done', options, totalToRun, chunkIndex, ...
+        doneCount, elapsedNow, computeEta(doneCount, elapsedNow, estRange, totalToRun), scriptPath, chunkDur));
+
     if options.pauseBetweenChunks_s > 0
         pauseBetweenChunks(Aerotech_Controller, task, options);
     end
 end
 
+elapsedNow = toc(runTic);
+notifyProgress(options, makeProgressInfo('complete', options, totalToRun, options.endChunk, ...
+    doneCount, elapsedNow, 0, '', NaN));
 fprintf(logFid, 'Run completed: %s\r\n', currentTimestamp());
 fprintf('All requested chunks completed.\n');
 end
@@ -126,6 +147,9 @@ if ~isfield(options, 'stopToken')
 end
 if ~isfield(options, 'runStateFcn')
     options.runStateFcn = [];
+end
+if ~isfield(options, 'progressFcn')
+    options.progressFcn = [];
 end
 if ~isfield(options, 'psoAxis') || isempty(options.psoAxis)
     if isfield(manifest, 'config') && isfield(manifest.config, 'psoAxis')
@@ -230,6 +254,73 @@ function processUiEvents()
 try
     drawnow;
 catch
+end
+end
+
+function notifyProgress(options, info)
+if isfield(options, 'progressFcn') && isa(options.progressFcn, 'function_handle')
+    try
+        options.progressFcn(info);
+    catch progErr
+        warning('twoD_arbitary_printing_run:ProgressCallbackFailed', ...
+            'Progress callback failed: %s', progErr.message);
+    end
+end
+end
+
+function info = makeProgressInfo(phase, options, totalToRun, currentChunk, doneCount, ...
+    elapsed_s, eta_s, currentFile, lastDur_s)
+info = struct();
+info.phase = phase;                       % 'init' | 'start' | 'done' | 'complete'
+info.startChunk = options.startChunk;
+info.endChunk = options.endChunk;
+info.totalToRun = totalToRun;
+info.currentChunk = currentChunk;         % absolute chunk index
+info.indexInRun = currentChunk - options.startChunk + 1;
+info.doneCount = doneCount;
+if totalToRun > 0
+    info.fractionDone = doneCount / totalToRun;
+else
+    info.fractionDone = 0;
+end
+info.elapsed_s = elapsed_s;
+info.etaRemaining_s = eta_s;
+if isfinite(eta_s)
+    info.finishClock = datetime('now') + seconds(eta_s);
+else
+    info.finishClock = NaT;
+end
+[~, base, ext] = fileparts(char(currentFile));
+info.currentFile = [base ext];
+info.lastChunkDur_s = lastDur_s;
+end
+
+function eta = computeEta(doneCount, elapsed_s, estRange, totalToRun)
+% Remaining-time estimate. With per-chunk estimates, scale the remaining
+% estimated motion time by the observed speed factor (actual/estimated so far).
+% Otherwise fall back to a simple measured average per chunk.
+if ~isempty(estRange)
+    estDone = sum(estRange(1:doneCount));
+    estRem = sum(estRange(doneCount + 1:end));
+    if doneCount > 0 && estDone > 0
+        eta = (elapsed_s / estDone) * estRem;
+    else
+        eta = estRem;             % no measured speed yet: use the nominal estimate
+    end
+elseif doneCount > 0
+    eta = (elapsed_s / doneCount) * (totalToRun - doneCount);
+else
+    eta = NaN;
+end
+end
+
+function estRange = chunkEstimatesForRange(manifest, startChunk, endChunk)
+estRange = [];
+if isfield(manifest, 'chunkEstimatedTime_s') && ~isempty(manifest.chunkEstimatedTime_s)
+    v = manifest.chunkEstimatedTime_s(:);
+    if numel(v) >= endChunk && startChunk >= 1
+        estRange = v(startChunk:endChunk);
+    end
 end
 end
 

@@ -208,9 +208,9 @@ updateSummaryText('No script generated yet.');
     function buildActionPanel(parent)
         panel = uipanel(parent, 'Title', 'Workflow');
         makeScrollable(panel);
-        grid = uigridlayout(panel, [3 5]);
+        grid = uigridlayout(panel, [6 5]);
         grid.ColumnWidth = {42, '1x', 42, '1x', 52};
-        grid.RowHeight = {34, 34, 28};
+        grid.RowHeight = {34, 34, 28, 20, 16, 18};
         grid.Padding = [12 8 12 8];
         grid.RowSpacing = 7;
         grid.ColumnSpacing = 8;
@@ -239,6 +239,38 @@ updateSummaryText('No script generated yet.');
         note = uilabel(grid, 'Text', '0 = all');
         note.FontColor = [0.36 0.40 0.46];
         setGridPosition(note, 3, 5);
+
+        app.progressLabel = uilabel(grid, 'Text', 'No run yet.');
+        setGridPosition(app.progressLabel, 4, [1 5]);
+        app.progressAxes = uiaxes(grid);
+        setGridPosition(app.progressAxes, 5, [1 5]);
+        configureProgressBar(app.progressAxes);
+        app.progressPatch = patch(app.progressAxes, 'XData', [0 0 0 0], 'YData', [0 0 1 1], ...
+            'FaceColor', [0.20 0.55 0.90], 'EdgeColor', 'none');
+        app.etaLabel = uilabel(grid, 'Text', '');
+        app.etaLabel.FontColor = [0.36 0.40 0.46];
+        setGridPosition(app.etaLabel, 6, [1 5]);
+    end
+
+    function configureProgressBar(ax)
+        ax.XLim = [0 1];
+        ax.YLim = [0 1];
+        ax.XTick = [];
+        ax.YTick = [];
+        ax.XColor = [0.7 0.7 0.7];
+        ax.YColor = [0.7 0.7 0.7];
+        ax.Box = 'on';
+        ax.Color = [0.92 0.93 0.95];
+        title(ax, '');
+        try
+            ax.Toolbar.Visible = 'off';
+        catch
+        end
+        try
+            disableDefaultInteractivity(ax);
+        catch
+        end
+        hold(ax, 'on');
     end
 
     function buildStatusPanel(parent)
@@ -363,6 +395,34 @@ updateSummaryText('No script generated yet.');
         end
     end
 
+    function onRunProgress(info)
+        try
+            frac = max(0, min(1, info.fractionDone));
+            if isfield(app, 'progressPatch') && isvalid(app.progressPatch)
+                app.progressPatch.XData = [0 frac frac 0];
+            end
+            if strcmp(info.phase, 'complete')
+                app.progressLabel.Text = sprintf('Done: %d / %d chunks (100%%)', ...
+                    info.doneCount, info.totalToRun);
+            else
+                app.progressLabel.Text = sprintf('Chunk %d / %d  (%.1f%%)', ...
+                    info.indexInRun, info.totalToRun, 100 * frac);
+            end
+            app.etaLabel.Text = sprintf('Elapsed %s   Remaining ~ %s   Finish ~ %s', ...
+                fmtDuration(info.elapsed_s), fmtDuration(info.etaRemaining_s), fmtClock(info.finishClock));
+            drawnow limitrate;
+        catch
+        end
+    end
+
+    function showReadyProgress(summary)
+        if isfield(app, 'progressPatch') && isvalid(app.progressPatch)
+            app.progressPatch.XData = [0 0 0 0];
+        end
+        app.progressLabel.Text = sprintf('Ready: %d chunks', summary.scriptCount);
+        app.etaLabel.Text = sprintf('Est. total write time ~ %s', fmtDuration(summary.estimatedMotionTime_s));
+    end
+
     function generateScripts(varargin)
         try
             cfg = readConfigFromGui();
@@ -372,6 +432,7 @@ updateSummaryText('No script generated yet.');
             app.lastSummary = summary;
             app.endChunk.Value = summary.scriptCount;
             updateSummaryFromManifest(summary);
+            showReadyProgress(summary);
             if ~isempty(summary.previewMaskPath) && exist(summary.previewMaskPath, 'file')
                 previewBmp();
             end
@@ -406,6 +467,7 @@ updateSummaryText('No script generated yet.');
             options.stopToken = app.runStopToken;
             options.stopRequestedFcn = @() app.runStopToken.IsStopRequested;
             options.runStateFcn = @setActiveRunObjects;
+            options.progressFcn = @onRunProgress;
 
             if cfg.requireRunConfirmation
                 answer = confirmHardwareRun(sprintf( ...
@@ -612,6 +674,28 @@ try
     end
 catch
 end
+end
+
+function s = fmtDuration(seconds_in)
+% Seconds -> HH:MM:SS, or '--' for unknown/NaN.
+if isempty(seconds_in) || ~isfinite(seconds_in) || seconds_in < 0
+    s = '--';
+    return;
+end
+seconds_in = round(seconds_in);
+h = floor(seconds_in / 3600);
+m = floor(mod(seconds_in, 3600) / 60);
+sec = mod(seconds_in, 60);
+s = sprintf('%02d:%02d:%02d', h, m, sec);
+end
+
+function s = fmtClock(dt)
+% datetime -> HH:mm clock string, or '--' for unset.
+if isempty(dt) || ~isdatetime(dt) || any(isnat(dt))
+    s = '--';
+    return;
+end
+s = char(datetime(dt, 'Format', 'HH:mm'));
 end
 
 function [writeMaskPhysical, sourceInfo] = readBmpMaskForGui(cfg)

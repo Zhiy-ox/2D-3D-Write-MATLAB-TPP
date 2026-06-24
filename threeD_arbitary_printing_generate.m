@@ -39,6 +39,7 @@ prepareOutputFolders(cfg);
 
 scriptFiles = {};
 chunkCommandCounts = [];
+chunkEstimatedTime_s = [];
 chunkStartPositions_mm = zeros(0, 3);
 chunkEndPositions_mm = zeros(0, 3);
 buildWarnings = {};
@@ -46,6 +47,7 @@ buildWarnings = {};
 chunkIndex = 0;
 fid = -1;
 commandsInChunk = 0;
+commandsTimeInChunk = 0;
 
 currentPos = [0, 0, 0];
 totalMotionCommands = 0;
@@ -94,6 +96,7 @@ summary.manifestTextPath = manifestTextPath;
 summary.scriptFiles = scriptFiles;
 summary.scriptCount = numel(scriptFiles);
 summary.chunkCommandCounts = chunkCommandCounts;
+summary.chunkEstimatedTime_s = chunkEstimatedTime_s;
 summary.chunkStartPositions_mm = chunkStartPositions_mm;
 summary.chunkEndPositions_mm = chunkEndPositions_mm;
 summary.matrixRows = sourceInfo.rows;
@@ -165,6 +168,7 @@ fprintf('Manifest: %s\n', manifestPath);
 
             fprintf(fid, '%s\r\n', cmd.text);
             commandsInChunk = commandsInChunk + 1;
+            commandsTimeInChunk = commandsTimeInChunk + cmd.time_s;
             totalMotionCommands = totalMotionCommands + 1;
             estimatedMotionTime_s = estimatedMotionTime_s + cmd.time_s;
         end
@@ -192,8 +196,10 @@ fprintf('Manifest: %s\n', manifestPath);
 
         scriptFiles{chunkIndex, 1} = chunkPath;
         chunkCommandCounts(chunkIndex, 1) = 0;
+        chunkEstimatedTime_s(chunkIndex, 1) = 0;
         chunkStartPositions_mm(chunkIndex, :) = startPos;
         commandsInChunk = 0;
+        commandsTimeInChunk = 0;
     end
 
     function closeChunk(endPos)
@@ -208,6 +214,7 @@ fprintf('Manifest: %s\n', manifestPath);
         fid = -1;
 
         chunkCommandCounts(chunkIndex, 1) = commandsInChunk;
+        chunkEstimatedTime_s(chunkIndex, 1) = commandsTimeInChunk;
         chunkEndPositions_mm(chunkIndex, :) = endPos;
 
         if cfg.buildAeroBasic
