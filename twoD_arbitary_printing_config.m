@@ -46,6 +46,11 @@ cfg.repositionSpeed_mm_s = 10.0;
 % Serpentine scanning avoids long flyback moves across the image.
 cfg.serpentine = true;
 
+% When true, append a final move back to the physical start so the program has
+% net-zero displacement. Used by the multi-voltage workflow to keep separate
+% sessions registered; leave false for normal single-pass writing.
+cfg.returnToStart = false;
+
 % MATLAB image row 1 is at the top. With flipY=true, the physical bottom row
 % is written first so the fabricated pattern matches the BMP orientation in
 % a normal bottom-left XY coordinate system.

@@ -19,6 +19,7 @@ slprj/
 # Generated DLW toolpath output (build artifacts; regenerate from the matrices/BMPs)
 Generated_Scripts/
 Generated_Scripts_3D/
+Generated_Scripts_MV/
 Preview/
 
 # Third-party Aerotech .NET assemblies (proprietary; obtain from Aerotech, not redistributed here)

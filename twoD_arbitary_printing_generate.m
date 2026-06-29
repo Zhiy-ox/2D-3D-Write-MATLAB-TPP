@@ -24,7 +24,11 @@ cfg = fillDefaultConfig(cfg);
 validateConfig(cfg);
 prepareOutputFolders(cfg);
 
-[writeMaskImage, sourceInfo] = readBmpAsWriteMask(cfg);
+if isfield(cfg, 'maskOverride') && ~isempty(cfg.maskOverride)
+    [writeMaskImage, sourceInfo] = useMaskOverride(cfg);
+else
+    [writeMaskImage, sourceInfo] = readBmpAsWriteMask(cfg);
+end
 writeMaskPhysical = writeMaskImage;
 if cfg.flipY
     writeMaskPhysical = flipud(writeMaskPhysical);
@@ -73,6 +77,16 @@ for scanLineIndex = 1:dims.scanLineCount
     rowBlackSegments(scanLineIndex) = rowStats.blackSegments;
     whiteSegmentCount = whiteSegmentCount + rowStats.whiteSegments;
     blackSegmentCount = blackSegmentCount + rowStats.blackSegments;
+end
+
+% Optionally return to the physical start so the program has net-zero
+% displacement (used to keep multi-session patterns registered).
+if isfield(cfg, 'returnToStart') && cfg.returnToStart
+    returnCmd = makeMoveCommand(currentPos, [0, 0, 0], cfg.repositionSpeed_mm_s, cfg, false);
+    if ~isempty(returnCmd)
+        writeCommandBlock(returnCmd);
+        currentPos = [0, 0, 0];
+    end
 end
 
 if fid >= 0
@@ -233,7 +247,8 @@ end
 end
 
 function validateConfig(cfg)
-if ~exist(cfg.bmpPath, 'file')
+hasMaskOverride = isfield(cfg, 'maskOverride') && ~isempty(cfg.maskOverride);
+if ~hasMaskOverride && ~exist(cfg.bmpPath, 'file')
     error('BMP file not found: %s', cfg.bmpPath);
 end
 mustBePositiveScalar(cfg.pixelSize_um, 'pixelSize_um');
@@ -296,6 +311,21 @@ end
 if cfg.savePreview && ~exist(cfg.previewDir, 'dir')
     mkdir(cfg.previewDir);
 end
+end
+
+function [writeMask, sourceInfo] = useMaskOverride(cfg)
+% Use a caller-supplied binary write mask instead of reading the BMP. The mask
+% is in image orientation (row 1 = top); flipY / invertImage are applied later
+% by the caller exactly as for the BMP path.
+writeMask = logical(cfg.maskOverride);
+
+sourceInfo = struct();
+sourceInfo.class = 'maskOverride';
+sourceInfo.size = size(writeMask);
+sourceInfo.hasColormap = false;
+sourceInfo.grayMin = double(min(writeMask(:)));
+sourceInfo.grayMax = double(max(writeMask(:)));
+sourceInfo.uniqueGrayCount = numel(unique(writeMask(:)));
 end
 
 function [writeMask, sourceInfo] = readBmpAsWriteMask(cfg)

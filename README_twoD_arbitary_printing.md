@@ -24,6 +24,15 @@ This workflow converts a black/white BMP into small AeroBasic `.ab` chunks for l
 
 See [3D Arbitrary Surface Writing](#3d-arbitrary-surface-writing) below.
 
+Multi-voltage 2D writing (one BMP value per phase voltage) is provided by another parallel set of files:
+
+- `multiVoltage_arbitary_printing.m`: GUI for assigning a voltage to each BMP value, previewing the class map, generating sessions, and running them with a voltage step between each.
+- `multiVoltage_arbitary_printing_config.m`: values→voltages, AFG, and (reused) geometry/motion/Aerotech settings.
+- `multiVoltage_arbitary_printing_generate.m`: splits the BMP into one written session per value (reusing the 2D engine) and writes a session index.
+- `multiVoltage_arbitary_printing_run.m`: runs the sessions in order, setting/confirming the voltage between them.
+
+See [Multi-voltage 2D Writing](#multi-voltage-2d-writing) below.
+
 ## GUI Use
 
 In MATLAB:
@@ -161,6 +170,44 @@ twoD_arbitary_printing_run(summary.manifestPath);
 - `serpentine`, `flipY`, `coordinateMode`, PSO control, chunking, and build/run options behave exactly as in the 2D pipeline.
 
 The matrix is interpreted as rows = Y (top to bottom) and columns = X. With `flipY = true` the physical bottom row is written first, matching a bottom-left XY view.
+
+## Multi-voltage 2D Writing
+
+This workflow writes a multi-value BMP (e.g. gray levels 0 / 128 / 255) where each value is written as its own pattern at its own liquid-crystal **phase voltage**. Because the voltage (and therefore the LC phase) is changed between patterns, the values are written in separate **sessions**: all pixels of one value are written at its voltage, then the voltage is changed and the next value is written, and so on. The stage is **not moved** between sessions and each session **returns to the physical start**, so the patterns stay registered in one coordinate frame.
+
+Each value in `writtenValues` becomes one session, written in order at the matching entry in `voltages`. Pixels within `valueTolerance` (on a 0–255 gray scale) of a written value are written for that session; every other pixel — including the background value (e.g. 0) and anything not listed — is traversed fast and never written.
+
+### GUI use
+
+```matlab
+multiVoltage_arbitary_printing
+```
+
+1. Choose the multi-value BMP.
+2. On the `Values` tab, list each written value and its voltage (rows are written top to bottom; use `Add row` / `Remove row`), and set the gray-level tolerance.
+3. On the `AFG` tab, optionally enable `Auto-set voltage via AFG` and set the waveform / frequency / unit; `Set now (test)` applies the first row's voltage. (The AFG drives a Tektronix generator via `AFG_Standalone.m`.)
+4. Set `Geometry`, `Motion`, and `Aerotech` as in the 2D workflow.
+5. `Preview` shows the color-coded class map (gray = background). `Generate Sessions` builds the per-session chunks and a session index.
+6. Position the stage at the intended origin, then `Run Sessions`. Before each session the voltage is auto-set (if enabled) and a dialog lets you set/adjust it manually and confirm. The progress bar and ETA update per session.
+
+### Script use
+
+```matlab
+cfg = multiVoltage_arbitary_printing_config();
+cfg.bmpPath = fullfile(pwd, 'my_3value.bmp');
+cfg.writtenValues = [128 255];   % 0 is background
+cfg.voltages = [2.0 4.0];        % phase voltage per value
+cfg.valueTolerance = 24;
+cfg.useAFG = false;              % true to auto-set via AFG_Standalone
+sessions = multiVoltage_arbitary_printing_generate(cfg);
+multiVoltage_arbitary_printing_run(sessions.sessionsPath);
+```
+
+The runner pauses before each session (`requireSessionConfirmation`), shows the target value/voltage, and — with `useAFG = true` — sets the AFG amplitude automatically; you can still adjust the voltage at the prompt. It reuses `twoD_arbitary_printing_run` per session, so the stop button, PSO handling, and progress bar all apply.
+
+### Registration and reuse
+
+Registration relies on each session returning to the physical start (`returnToStartEachSession = true`), which appends a final move so each session has net-zero displacement. Internally the generator reuses the proven 2D engine via two small, default-off hooks added to `twoD_arbitary_printing_generate.m` (`maskOverride` to supply a binary mask, and `returnToStart`); normal single-pass 2D and 3D writing are unchanged.
 
 ## Safety Notes
 
