@@ -52,7 +52,7 @@ else
     controller = options.controller;
 end
 
-cleanupAFG = onCleanup(@() afgOffIfNeeded(cfg)); %#ok<NASGU>
+cleanupAFG = onCleanup(@() afgOffIfNeeded(cfg));
 
 for i = options.startSession:options.endSession
     s = sessions.sessionList(i);

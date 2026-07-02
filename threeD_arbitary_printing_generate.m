@@ -60,7 +60,7 @@ rowWriteSegments = zeros(grid.ny, 1);
 rowTraverseSegments = zeros(grid.ny, 1);
 
 for scanLineIndex = 1:grid.ny
-    [cmds, rowEndPos, rowStats] = buildRowCommands(surface, scanLineIndex, currentPos, cfg, grid);
+    [cmds, rowEndPos, rowStats] = buildRowCommands(surface, scanLineIndex, currentPos, cfg);
     writeCommandBlock(cmds);
 
     currentPos = rowEndPos;
@@ -134,7 +134,7 @@ summary.phaseHeightOffset_um = cfg.phaseHeightOffset_um;
 summary.config = cfg;
 summary.buildWarnings = buildWarnings;
 
-manifest = summary; %#ok<NASGU>
+manifest = summary;
 save(manifestPath, 'manifest');
 writeManifestText(summary, cfg);
 
@@ -241,7 +241,7 @@ function cfg = fillDefaultConfig(cfg)
 defaults = threeD_arbitary_printing_config();
 names = fieldnames(defaults);
 for k = 1:numel(names)
-    if ~isfield(cfg, names{k}) || (isempty(cfg.(names{k})) && ~islogical(cfg.(names{k})))
+    if ~isfield(cfg, names{k}) || isempty(cfg.(names{k}))
         cfg.(names{k}) = defaults.(names{k});
     end
 end
@@ -469,7 +469,7 @@ grid.writtenPoints = nnz(isfinite(Z_mm));
 grid.skippedPoints = nnz(~isfinite(Z_mm));
 end
 
-function [cmds, endPos, stats] = buildRowCommands(surface, scanLineIndex, startPos, cfg, grid)
+function [cmds, endPos, stats] = buildRowCommands(surface, scanLineIndex, startPos, cfg)
 cmds = emptyCommandStruct();
 currentPos = startPos;
 

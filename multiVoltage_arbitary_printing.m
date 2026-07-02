@@ -296,22 +296,6 @@ updateSummaryText('No sessions generated yet.');
         setGridPosition(app.etaLabel, 6, [1 5]);
     end
 
-    function configureProgressBar(ax)
-        ax.XLim = [0 1]; ax.YLim = [0 1]; ax.XTick = []; ax.YTick = [];
-        ax.XColor = [0.7 0.7 0.7]; ax.YColor = [0.7 0.7 0.7];
-        ax.Box = 'on'; ax.Color = [0.92 0.93 0.95];
-        title(ax, '');
-        try
-            ax.Toolbar.Visible = 'off';
-        catch
-        end
-        try
-            disableDefaultInteractivity(ax);
-        catch
-        end
-        hold(ax, 'on');
-    end
-
     function buildStatusPanel(parent)
         panel = uipanel(parent, 'Title', 'Status');
         grid = uigridlayout(panel, [1 1]);
@@ -446,7 +430,7 @@ updateSummaryText('No sessions generated yet.');
 
     function runSessions(varargin)
         runButton = app.runButton;
-        cleanupButton = onCleanup(@() setControlEnabled(runButton, 'on')); %#ok<NASGU>
+        cleanupButton = onCleanup(@() setControlEnabled(runButton, 'on'));
         try
             cfg = readConfigFromGui();
             sessionsPath = getSessionsPath(cfg);
@@ -699,15 +683,6 @@ updateSummaryText('No sessions generated yet.');
     end
 end
 
-function setControlEnabled(control, value)
-try
-    if ~isempty(control) && isvalid(control)
-        control.Enable = value;
-    end
-catch
-end
-end
-
 function [classMap, gray255, counts] = computeClassMapForGui(cfg)
 [raw, map] = imread(cfg.bmpPath);
 if ~isempty(map)
@@ -747,16 +722,4 @@ base = [0.20 0.45 0.90; 0.90 0.30 0.20; 0.20 0.70 0.35; 0.85 0.65 0.10; ...
     0.55 0.30 0.75; 0.20 0.75 0.80];
 if n < 1, pal = base(1, :); return; end
 if n <= size(base, 1), pal = base(1:n, :); else, pal = base(mod(0:n - 1, size(base, 1)) + 1, :); end
-end
-
-function s = fmtDuration(seconds_in)
-if isempty(seconds_in) || ~isfinite(seconds_in) || seconds_in < 0, s = '--'; return; end
-seconds_in = round(seconds_in);
-h = floor(seconds_in / 3600); m = floor(mod(seconds_in, 3600) / 60); sec = mod(seconds_in, 60);
-s = sprintf('%02d:%02d:%02d', h, m, sec);
-end
-
-function s = fmtClock(dt)
-if isempty(dt) || ~isdatetime(dt) || any(isnat(dt)), s = '--'; return; end
-s = char(datetime(dt, 'Format', 'HH:mm'));
 end

@@ -87,7 +87,7 @@ function cfg = fillDefaultConfig(cfg)
 defaults = multiVoltage_arbitary_printing_config();
 names = fieldnames(defaults);
 for k = 1:numel(names)
-    if ~isfield(cfg, names{k}) || (isempty(cfg.(names{k})) && ~islogical(cfg.(names{k})))
+    if ~isfield(cfg, names{k}) || isempty(cfg.(names{k}))
         cfg.(names{k}) = defaults.(names{k});
     end
 end
@@ -100,8 +100,8 @@ end
 if isempty(cfg.writtenValues) || ~isnumeric(cfg.writtenValues)
     error('writtenValues must be a non-empty numeric vector of gray levels.');
 end
-if any(cfg.writtenValues < 0) || any(cfg.writtenValues > 255)
-    error('writtenValues must be on a 0-255 gray scale.');
+if any(~isfinite(cfg.writtenValues)) || any(cfg.writtenValues < 0) || any(cfg.writtenValues > 255)
+    error('writtenValues must be finite gray levels on a 0-255 scale.');
 end
 if numel(cfg.voltages) ~= numel(cfg.writtenValues)
     error('voltages must have the same length as writtenValues (%d).', numel(cfg.writtenValues));

@@ -252,27 +252,6 @@ updateSummaryText('No script generated yet.');
         setGridPosition(app.etaLabel, 6, [1 5]);
     end
 
-    function configureProgressBar(ax)
-        ax.XLim = [0 1];
-        ax.YLim = [0 1];
-        ax.XTick = [];
-        ax.YTick = [];
-        ax.XColor = [0.7 0.7 0.7];
-        ax.YColor = [0.7 0.7 0.7];
-        ax.Box = 'on';
-        ax.Color = [0.92 0.93 0.95];
-        title(ax, '');
-        try
-            ax.Toolbar.Visible = 'off';
-        catch
-        end
-        try
-            disableDefaultInteractivity(ax);
-        catch
-        end
-        hold(ax, 'on');
-    end
-
     function buildStatusPanel(parent)
         panel = uipanel(parent, 'Title', 'Status');
         grid = uigridlayout(panel, [1 1]);
@@ -665,37 +644,6 @@ updateSummaryText('No script generated yet.');
             errordlg(message, titleText);
         end
     end
-end
-
-function setControlEnabled(control, value)
-try
-    if ~isempty(control) && isvalid(control)
-        control.Enable = value;
-    end
-catch
-end
-end
-
-function s = fmtDuration(seconds_in)
-% Seconds -> HH:MM:SS, or '--' for unknown/NaN.
-if isempty(seconds_in) || ~isfinite(seconds_in) || seconds_in < 0
-    s = '--';
-    return;
-end
-seconds_in = round(seconds_in);
-h = floor(seconds_in / 3600);
-m = floor(mod(seconds_in, 3600) / 60);
-sec = mod(seconds_in, 60);
-s = sprintf('%02d:%02d:%02d', h, m, sec);
-end
-
-function s = fmtClock(dt)
-% datetime -> HH:mm clock string, or '--' for unset.
-if isempty(dt) || ~isdatetime(dt) || any(isnat(dt))
-    s = '--';
-    return;
-end
-s = char(datetime(dt, 'Format', 'HH:mm'));
 end
 
 function [writeMaskPhysical, sourceInfo] = readBmpMaskForGui(cfg)
