@@ -1,5 +1,15 @@
 # twoD BMP to Aerotech DLW Toolpath
 
+## Integrated UI
+
+All three writers share one window:
+
+```matlab
+arbitary_printing
+```
+
+This opens a single window with three mode tabs — **2D Binary Write**, **3D Curvature Write**, and **2D Multi-Voltage Write** — each the full tool. Each tab is independent (its own settings, preview, and run state), and only one hardware run can be active at a time. The individual tools can still be opened as separate windows by calling their functions with no arguments (e.g. `twoD_arbitary_printing`).
+
 This workflow converts a black/white BMP into small AeroBasic `.ab` chunks for line-by-line DLW writing.
 
 - White pixels: written at `writeSpeed_mm_s`

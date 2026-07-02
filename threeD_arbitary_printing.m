@@ -1,8 +1,9 @@
-function threeD_arbitary_printing()
+function threeD_arbitary_printing(parentContainer)
 %THREED_ARBITARY_PRINTING User interface for matrix-based 3D surface DLW toolpaths.
 %
 % Run from MATLAB:
-%   threeD_arbitary_printing
+%   threeD_arbitary_printing                 % standalone window
+%   threeD_arbitary_printing(parentContainer)% embed in a container/tab (see arbitary_printing)
 %
 % The GUI wraps threeD_arbitary_printing_config, threeD_arbitary_printing_generate,
 % and reuses twoD_arbitary_printing_run (the chunk runner is pattern-agnostic).
@@ -16,10 +17,16 @@ app.runStopToken = AerotechRunStopToken();
 app.activeController = [];
 app.activeTask = [];
 
-app.fig = uifigure('Name', 'threeD Arbitrary Printing', ...
-    'Position', [50 40 1360 860]);
+if nargin < 1 || isempty(parentContainer)
+    app.fig = uifigure('Name', 'threeD Arbitrary Printing', ...
+        'Position', [50 40 1360 860]);
+    uiParent = app.fig;
+else
+    uiParent = parentContainer;
+    app.fig = ancestor(parentContainer, 'figure');
+end
 
-root = uigridlayout(app.fig, [2 1]);
+root = uigridlayout(uiParent, [2 1]);
 root.RowHeight = {62, '1x'};
 root.ColumnWidth = {'1x'};
 root.Padding = [14 12 14 14];

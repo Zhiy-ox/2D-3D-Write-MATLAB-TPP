@@ -1,8 +1,9 @@
-function twoD_arbitary_printing()
+function twoD_arbitary_printing(parentContainer)
 %TWOD_ARBITARY_PRINTING User interface for BMP-based twoD DLW toolpath generation.
 %
 % Run from MATLAB:
-%   twoD_arbitary_printing
+%   twoD_arbitary_printing                 % standalone window
+%   twoD_arbitary_printing(parentContainer)% embed in a container/tab (see arbitary_printing)
 %
 % The GUI wraps twoD_arbitary_printing_config, twoD_arbitary_printing_generate, and
 % twoD_arbitary_printing_run.
@@ -16,10 +17,16 @@ app.runStopToken = AerotechRunStopToken();
 app.activeController = [];
 app.activeTask = [];
 
-app.fig = uifigure('Name', 'twoD Arbitrary Printing', ...
-    'Position', [50 40 1360 860]);
+if nargin < 1 || isempty(parentContainer)
+    app.fig = uifigure('Name', 'twoD Arbitrary Printing', ...
+        'Position', [50 40 1360 860]);
+    uiParent = app.fig;
+else
+    uiParent = parentContainer;
+    app.fig = ancestor(parentContainer, 'figure');
+end
 
-root = uigridlayout(app.fig, [2 1]);
+root = uigridlayout(uiParent, [2 1]);
 root.RowHeight = {62, '1x'};
 root.ColumnWidth = {'1x'};
 root.Padding = [14 12 14 14];

@@ -1,8 +1,9 @@
-function multiVoltage_arbitary_printing()
+function multiVoltage_arbitary_printing(parentContainer)
 %MULTIVOLTAGE_ARBITARY_PRINTING GUI for multi-value BMP -> per-voltage sessions.
 %
 % Run from MATLAB:
-%   multiVoltage_arbitary_printing
+%   multiVoltage_arbitary_printing                 % standalone window
+%   multiVoltage_arbitary_printing(parentContainer)% embed in a container/tab (see arbitary_printing)
 %
 % Wraps multiVoltage_arbitary_printing_config / _generate / _run. Each gray value
 % in the Values table becomes one written pattern (session) at its own phase
@@ -17,9 +18,15 @@ app.runStopToken = AerotechRunStopToken();
 app.activeController = [];
 app.activeTask = [];
 
-app.fig = uifigure('Name', 'multiVoltage Arbitrary Printing', 'Position', [50 40 1380 880]);
+if nargin < 1 || isempty(parentContainer)
+    app.fig = uifigure('Name', 'multiVoltage Arbitrary Printing', 'Position', [50 40 1380 880]);
+    uiParent = app.fig;
+else
+    uiParent = parentContainer;
+    app.fig = ancestor(parentContainer, 'figure');
+end
 
-root = uigridlayout(app.fig, [2 1]);
+root = uigridlayout(uiParent, [2 1]);
 root.RowHeight = {62, '1x'};
 root.ColumnWidth = {'1x'};
 root.Padding = [14 12 14 14];
