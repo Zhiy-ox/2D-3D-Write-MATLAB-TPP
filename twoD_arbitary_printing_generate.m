@@ -272,6 +272,9 @@ end
 if ~any(strcmpi(cfg.coordinateMode, {'relative', 'absolute'}))
     error('coordinateMode must be ''relative'' or ''absolute''.');
 end
+if isfield(cfg, 'scanAxis') && ~any(strcmpi(cfg.scanAxis, {'x', 'y'}))
+    error('scanAxis must be ''x'' or ''y''.');
+end
 end
 
 function mustBePositiveScalar(value, name)
@@ -418,18 +421,31 @@ if cfg.serpentine && mod(scanLineIndex, 2) == 0
     direction = -1;
 end
 
-y = cfg.yOrigin_mm + (scanLineIndex - 1) * dims.lineSpacing_mm;
+% Scan-frame coordinates: u runs along the scan line, v steps across lines.
+% scanAxis 'x' (default) maps [u v] -> [x y]; 'y' maps [u v] -> [y x], i.e. the
+% scan lines run along physical Y and step across in X (the caller supplies the
+% mask transposed so its rows are the Y-lines).
+scanAlongY = isfield(cfg, 'scanAxis') && strcmpi(cfg.scanAxis, 'y');
+if scanAlongY
+    uOrigin = cfg.yOrigin_mm;
+    vOrigin = cfg.xOrigin_mm;
+else
+    uOrigin = cfg.xOrigin_mm;
+    vOrigin = cfg.yOrigin_mm;
+end
+
+v = vOrigin + (scanLineIndex - 1) * dims.lineSpacing_mm;
 z = cfg.zPosition_mm;
 
 if direction > 0
-    lineStart = [cfg.xOrigin_mm - dims.leadIn_mm, y, z];
-    patternStart = [cfg.xOrigin_mm, y, z];
-    lineEnd = [cfg.xOrigin_mm + dims.patternWidth_mm + dims.leadOut_mm, y, z];
+    lineStart = uvToXYZ(uOrigin - dims.leadIn_mm, v, z, scanAlongY);
+    patternStart = uvToXYZ(uOrigin, v, z, scanAlongY);
+    lineEnd = uvToXYZ(uOrigin + dims.patternWidth_mm + dims.leadOut_mm, v, z, scanAlongY);
     scanRow = rowMask;
 else
-    lineStart = [cfg.xOrigin_mm + dims.patternWidth_mm + dims.leadIn_mm, y, z];
-    patternStart = [cfg.xOrigin_mm + dims.patternWidth_mm, y, z];
-    lineEnd = [cfg.xOrigin_mm - dims.leadOut_mm, y, z];
+    lineStart = uvToXYZ(uOrigin + dims.patternWidth_mm + dims.leadIn_mm, v, z, scanAlongY);
+    patternStart = uvToXYZ(uOrigin + dims.patternWidth_mm, v, z, scanAlongY);
+    lineEnd = uvToXYZ(uOrigin - dims.leadOut_mm, v, z, scanAlongY);
     scanRow = fliplr(rowMask);
 end
 
@@ -448,12 +464,12 @@ blackSegments = 0;
 for runIndex = 1:numel(runs)
     sEnd = runs(runIndex).endIndex * dims.pixel_mm;
     if direction > 0
-        xTarget = cfg.xOrigin_mm + sEnd;
+        uTarget = uOrigin + sEnd;
     else
-        xTarget = cfg.xOrigin_mm + dims.patternWidth_mm - sEnd;
+        uTarget = uOrigin + dims.patternWidth_mm - sEnd;
     end
 
-    target = [xTarget, y, z];
+    target = uvToXYZ(uTarget, v, z, scanAlongY);
     if runs(runIndex).isWhite
         speed = cfg.writeSpeed_mm_s;
         whiteSegments = whiteSegments + 1;
@@ -475,6 +491,15 @@ endPos = currentPos;
 stats = struct();
 stats.whiteSegments = whiteSegments;
 stats.blackSegments = blackSegments;
+end
+
+function pos = uvToXYZ(u, v, z, scanAlongY)
+% Map scan-frame coordinates (u along the scan line, v across lines) to XYZ.
+if scanAlongY
+    pos = [v, u, z];
+else
+    pos = [u, v, z];
+end
 end
 
 function runs = encodeRuns(scanRow)

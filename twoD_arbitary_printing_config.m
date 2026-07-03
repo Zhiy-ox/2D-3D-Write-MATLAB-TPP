@@ -51,6 +51,12 @@ cfg.serpentine = true;
 % sessions registered; leave false for normal single-pass writing.
 cfg.returnToStart = false;
 
+% Scan-line axis. 'x' (default): lines run along X, stepped in Y. 'y': lines run
+% along Y, stepped in X — used by the layer-by-layer 3D workflow for 0/90
+% crosshatching (the caller supplies the mask transposed). Leave 'x' for normal
+% 2D writing.
+cfg.scanAxis = 'x';
+
 % MATLAB image row 1 is at the top. With flipY=true, the physical bottom row
 % is written first so the fabricated pattern matches the BMP orientation in
 % a normal bottom-left XY coordinate system.

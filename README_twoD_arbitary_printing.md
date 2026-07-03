@@ -8,7 +8,7 @@ All three writers share one window:
 arbitary_printing
 ```
 
-This opens a single window with three mode tabs — **2D Binary Write**, **3D Curvature Write**, and **2D Multi-Voltage Write** — each the full tool. Each tab is independent (its own settings, preview, and run state), and only one hardware run can be active at a time. The individual tools can still be opened as separate windows by calling their functions with no arguments (e.g. `twoD_arbitary_printing`).
+This opens a single window with four mode tabs — **2D Binary Write**, **3D Curvature Write**, **2D Multi-Voltage Write**, and **Nanoscribe 3D Print** — each the full tool. Each tab is independent (its own settings, preview, and run state), and only one hardware run can be active at a time. The individual tools can still be opened as separate windows by calling their functions with no arguments (e.g. `twoD_arbitary_printing`).
 
 This workflow converts a black/white BMP into small AeroBasic `.ab` chunks for line-by-line DLW writing.
 
@@ -218,6 +218,43 @@ The runner pauses before each session (`requireSessionConfirmation`), shows the 
 ### Registration and reuse
 
 Registration relies on each session returning to the physical start (`returnToStartEachSession = true`), which appends a final move so each session has net-zero displacement. Internally the generator reuses the proven 2D engine via two small, default-off hooks added to `twoD_arbitary_printing_generate.m` (`maskOverride` to supply a binary mask, and `returnToStart`); normal single-pass 2D and 3D writing are unchanged.
+
+## Nanoscribe-style Layer-by-Layer 3D Printing
+
+This workflow does true 3D printing: the model is sliced into layers, each layer is written as a hatched 2D slice at its own Z, and the stage steps one layer height between layers. Input is an **STL mesh** (sliced with an even-odd scanline fill) or a **.mat heightmap** (extruded: each layer's mask is `height >= layer mid-plane z`). Output is chunked `.ab` files per layer, run in order on the Aerotech stage.
+
+### GUI use
+
+```matlab
+nanoscribe3D_arbitary_printing      % or the "Nanoscribe 3D Print" tab in arbitary_printing
+```
+
+1. Choose the model (`.stl` or `.mat`). For STL set the unit scale (1000 for a mesh authored in mm); for a heightmap set the footprint, height scale/offset, and interpolation on the `Input` tab.
+2. On the `Slicing` tab set layer height, XY resolution (written pixel size), hatch spacing, crosshatch, and the Z direction (`Layers build toward -Z` for a fixed objective).
+3. `Slice Preview` shows every layer with a slider; `3D View` shows the mesh / height surface.
+4. `Generate Layers`, check the `Summary` / `Layers` tabs, position the stage at the print origin (first-layer focus), then `Run Layers`. `From`/`To` allow resuming from a specific layer.
+
+### Script use
+
+```matlab
+cfg = nanoscribe3D_arbitary_printing_config();
+cfg.inputPath = fullfile(pwd, 'model.stl');
+cfg.stlScale_um_per_unit = 1000;   % STL authored in mm
+cfg.layerHeight_um = 0.5;
+cfg.xyResolution_um = 0.5;
+cfg.hatchSpacing_um = 0.5;
+layers = nanoscribe3D_arbitary_printing_generate(cfg);
+nanoscribe3D_arbitary_printing_run(layers.layersPath);
+```
+
+### Key settings and behavior
+
+- **`layerHeight_um`** — Z step between layers. Layer `k` is written at `z = zLayerSign*(firstLayerZOffset_um + (k-1/2)*layerHeight_um)`; with a fixed objective the stage moves toward −Z to build upward (`zLayerSign = -1`, default).
+- **`xyResolution_um`** — slice-grid pitch = written pixel size along a scan line. **`hatchSpacing_um`** — spacing between scan lines within a layer.
+- **`crossHatch`** — odd layers hatch along X, even layers along Y (isotropic in-plane strength). Implemented via the 2D engine's `scanAxis` option; with crosshatch off all layers hatch along X.
+- Every layer **returns to the physical start** (net-zero displacement), so relative chaining across hundreds of layers cannot drift; the only net motion between layers is the Z step in each layer's first moves. The return move dives back to the start corner at the first-layer plane at reposition speed — the same fast-traverse dose model as the rest of this repo; verify the dose is harmless before a high-value print.
+- STL meshes should be **watertight**; open meshes produce odd-crossing warnings and per-row artifacts (visible in the slice preview).
+- `maxLayers` caps the layer count to guard against a mistyped layer height; empty layers are skipped.
 
 ## Safety Notes
 

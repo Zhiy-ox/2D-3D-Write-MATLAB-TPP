@@ -1,10 +1,11 @@
 function arbitary_printing()
 %ARBITARY_PRINTING Integrated UI for DLW toolpath generation.
 %
-% One window with three mode tabs, each hosting the full standalone tool:
+% One window with four mode tabs, each hosting the full standalone tool:
 %   - 2D Binary Write      -> twoD_arbitary_printing
 %   - 3D Curvature Write   -> threeD_arbitary_printing
 %   - 2D Multi-Voltage     -> multiVoltage_arbitary_printing
+%   - Nanoscribe 3D Print  -> nanoscribe3D_arbitary_printing (layer-by-layer)
 %
 % Run from MATLAB:
 %   arbitary_printing
@@ -23,8 +24,10 @@ tabs = uitabgroup(layout);
 binaryTab = uitab(tabs, 'Title', '2D Binary Write');
 curvatureTab = uitab(tabs, 'Title', '3D Curvature Write');
 multiTab = uitab(tabs, 'Title', '2D Multi-Voltage Write');
+nanoTab = uitab(tabs, 'Title', 'Nanoscribe 3D Print');
 
 twoD_arbitary_printing(binaryTab);
 threeD_arbitary_printing(curvatureTab);
 multiVoltage_arbitary_printing(multiTab);
+nanoscribe3D_arbitary_printing(nanoTab);
 end
