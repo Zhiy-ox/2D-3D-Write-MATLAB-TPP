@@ -125,18 +125,16 @@ updateSummaryText('No layers generated yet.');
         grid.RowSpacing = 8;
         grid.ColumnSpacing = 12;
         app.stlScale_um_per_unit = addNumericAt(grid, 'STL scale (um/unit)', cfg.stlScale_um_per_unit, 1, 1, 2);
-        lbl = uilabel(grid, 'Text', 'Interp (heightmap)');
-        setGridPosition(lbl, 1, 3);
-        app.interpMethod = uidropdown(grid, 'Items', {'nearest', 'linear', 'cubic', 'spline', 'makima'}, ...
-            'Value', cfg.interpMethod);
-        setGridPosition(app.interpMethod, 1, 4);
-        app.targetSizeX_um = addNumericAt(grid, 'Heightmap size X (um)', cfg.targetSizeX_um, 2, 1, 2);
-        app.targetSizeY_um = addNumericAt(grid, 'Heightmap size Y (um)', cfg.targetSizeY_um, 2, 3, 4);
-        app.heightScale_um_per_unit = addNumericAt(grid, 'Height scale (um/unit)', cfg.heightScale_um_per_unit, 3, 1, 2);
-        app.heightOffset_um = addNumericAt(grid, 'Height offset (um)', cfg.heightOffset_um, 3, 3, 4);
-        note = uilabel(grid, 'Text', ['STL scale: 1000 for a mesh authored in mm, 1 for um. ', ...
-            'Heightmap fields apply only to .mat input.']);
+        app.targetMaxXY_um = addNumericAt(grid, 'Target max XY (um, 0=native)', 0, 1, 3, 4);
+        app.pixelPitch_um = addNumericAt(grid, 'Pixel pitch (um)', cfg.pixelPitch_um, 2, 1, 2);
+        app.heightScale_um_per_unit = addNumericAt(grid, 'Height scale (um/unit)', cfg.heightScale_um_per_unit, 2, 3, 4);
+        app.baseHeight_um = addNumericAt(grid, 'Base height (um)', cfg.baseHeight_um, 3, 1, 2);
+        note = uilabel(grid, 'Text', ['Heightmap raster is pixel-exact (nearest cell, no interpolation). ', ...
+            'Target max XY scales XY and Z uniformly; base height adds a solid slab under the model.']);
         note.FontColor = [0.36 0.40 0.46];
+        if isprop(note, 'WordWrap')
+            note.WordWrap = 'on';
+        end
         setGridPosition(note, 4, [1 4]);
     end
 
@@ -363,12 +361,13 @@ updateSummaryText('No layers generated yet.');
             est = totalPixels(slices) * cfg.xyResolution_um / 1000 / cfg.writeSpeed_mm_s;
             updateSummaryText(sprintf(['Sliced (%s)\n', ...
                 'Extent: %.4g x %.4g x %.4g um\n', ...
+                'Scale to target: %.6g\n', ...
                 'Layers: %d at %.4g um\n', ...
                 'Grid: %d x %d at %.4g um\n', ...
                 'Solid pixels: %d\n', ...
                 'Rough write time (writes only): %s\n%s'], ...
                 slices.sourceType, slices.extent_um(1), slices.extent_um(2), slices.extent_um(3), ...
-                slices.nLayers, cfg.layerHeight_um, ...
+                slices.scaleToTarget, slices.nLayers, cfg.layerHeight_um, ...
                 numel(slices.x_um), numel(slices.y_um), cfg.xyResolution_um, ...
                 totalPixels(slices), fmtDuration(est), openMeshNote(slices)));
             logStatus(sprintf('Sliced: %d layers.', slices.nLayers));
@@ -596,11 +595,14 @@ updateSummaryText('No layers generated yet.');
         cfg.scriptPrefix = char(app.scriptPrefix.Value);
 
         cfg.stlScale_um_per_unit = app.stlScale_um_per_unit.Value;
-        cfg.targetSizeX_um = app.targetSizeX_um.Value;
-        cfg.targetSizeY_um = app.targetSizeY_um.Value;
-        cfg.interpMethod = char(app.interpMethod.Value);
+        if app.targetMaxXY_um.Value > 0
+            cfg.targetMaxXY_um = app.targetMaxXY_um.Value;
+        else
+            cfg.targetMaxXY_um = [];
+        end
+        cfg.pixelPitch_um = app.pixelPitch_um.Value;
         cfg.heightScale_um_per_unit = app.heightScale_um_per_unit.Value;
-        cfg.heightOffset_um = app.heightOffset_um.Value;
+        cfg.baseHeight_um = app.baseHeight_um.Value;
 
         cfg.layerHeight_um = app.layerHeight_um.Value;
         cfg.xyResolution_um = app.xyResolution_um.Value;

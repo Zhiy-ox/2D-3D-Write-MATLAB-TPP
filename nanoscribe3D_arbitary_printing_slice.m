@@ -29,6 +29,10 @@ P = double(TR.Points) * cfg.stlScale_um_per_unit;   % -> micrometers
 P = P - min(P, [], 1);                               % min corner at the origin
 F = double(TR.ConnectivityList);
 
+% Optional uniform (true 3D) scaling so the larger XY span hits the target.
+scale = uniformScale(max(P(:, 1)), max(P(:, 2)), cfg.targetMaxXY_um);
+P = P * scale;
+
 extent = max(P, [], 1);
 if any(extent <= 0)
     error('STL mesh is degenerate (zero extent along an axis).');
@@ -71,6 +75,7 @@ slices.z_um = cfg.firstLayerZOffset_um + ((1:nLayers) - 0.5) * cfg.layerHeight_u
 slices.nLayers = nLayers;
 slices.sourceType = 'stl';
 slices.extent_um = extent;
+slices.scaleToTarget = scale;
 slices.mesh = struct('Points', P, 'ConnectivityList', F);
 slices.oddCrossingRows = oddRows;
 end
@@ -144,26 +149,35 @@ end
 end
 
 function slices = sliceHeightmap(cfg)
+% Pixel-exact height-map raster (same logic as 3D_Printer_construct's
+% heightmap_to_segments): NaN -> 0, negative heights clamped to 0, uniform
+% XY+Z scaling to the target span, a solid support base under the whole
+% footprint, and nearest-source-cell lookup instead of interpolation.
 S = load(cfg.inputPath);
 M = pickMatrixVariable(S, cfg.matVariableName, cfg.inputPath);
 M = double(M);
 if ~ismatrix(M) || size(M, 1) < 2 || size(M, 2) < 2
     error('Heightmap must be a 2D matrix of at least 2 x 2 (got size [%s]).', num2str(size(M)));
 end
+M(~isfinite(M)) = 0;
+Hsrc = max(M * cfg.heightScale_um_per_unit, 0);       % um, before scaling
+
+[nRows, nCols] = size(Hsrc);
+spanX0 = nCols * cfg.pixelPitch_um;
+spanY0 = nRows * cfg.pixelPitch_um;
+scale = uniformScale(spanX0, spanY0, cfg.targetMaxXY_um);
+spanX = spanX0 * scale;
+spanY = spanY0 * scale;
 
 res = cfg.xyResolution_um;
-x = 0:res:cfg.targetSizeX_um;
-y = 0:res:cfg.targetSizeY_um;
+x = 0:res:spanX;
+y = 0:res:spanY;
 
-% Resample onto the slice grid (matrix row 1 = y = 0 end after this mapping).
-[nRows, nCols] = size(M);
-colQ = 1 + (x / cfg.targetSizeX_um) * (nCols - 1);
-rowQ = 1 + (y / cfg.targetSizeY_um) * (nRows - 1);
-[CQ, RQ] = meshgrid(colQ, rowQ);
-sampled = interp2(M, CQ, RQ, cfg.interpMethod);
+% Nearest source cell per output grid point (pixel-exact, no interpolation).
+srcCols = min(nCols, max(1, floor(x / spanX * nCols) + 1));
+srcRows = min(nRows, max(1, floor(y / spanY * nRows) + 1));
+H = Hsrc(srcRows, srcCols) * scale + cfg.baseHeight_um;
 
-H = cfg.heightScale_um_per_unit * sampled + cfg.heightOffset_um;
-H(~isfinite(H)) = 0;                                  % NaN cells: nothing printed
 maxZ = max(H(:));
 if maxZ <= 0
     error('Heightmap has no positive height; nothing to print.');
@@ -184,9 +198,28 @@ slices.y_um = y;
 slices.z_um = z_um;
 slices.nLayers = nLayers;
 slices.sourceType = 'heightmap';
-slices.extent_um = [cfg.targetSizeX_um, cfg.targetSizeY_um, maxZ];
+slices.extent_um = [spanX, spanY, maxZ];
+slices.scaleToTarget = scale;
 slices.height_um = H;
 slices.oddCrossingRows = 0;
+end
+
+function s = uniformScale(spanX0, spanY0, targetMaxXY)
+% Uniform scale factor so the XY footprint fits the target (aspect preserved;
+% the same factor applies to heights for true 3D scaling). Empty target -> 1.
+if isempty(targetMaxXY)
+    s = 1;
+    return;
+end
+t = double(targetMaxXY(:)).';
+if ~all(isfinite(t)) || any(t <= 0) || numel(t) > 2
+    error('targetMaxXY_um must be a positive scalar or [maxX maxY] (um), or [].');
+end
+if isscalar(t)
+    s = t / max(spanX0, spanY0);
+else
+    s = min(t(1) / spanX0, t(2) / spanY0);
+end
 end
 
 function checkLayerCount(nLayers, cfg)

@@ -27,7 +27,15 @@ prepareOutputFolders(cfg);
 slices = nanoscribe3D_arbitary_printing_slice(cfg);
 
 layerList = struct('index', {}, 'z_um', {}, 'scanAxis', {}, 'manifestPath', {}, ...
-    'outputDir', {}, 'scriptCount', {}, 'estTime_s', {}, 'pixelCount', {});
+    'outputDir', {}, 'scriptCount', {}, 'estTime_s', {}, 'pixelCount', {}, ...
+    'startPos_mm', {});
+
+% Z-hop layer transitions (3D_Printer_construct style): each layer continues
+% from wherever the previous layer ended; only Z steps to the new plane. In
+% relative mode this is done by shifting each layer's origins by the absolute
+% position P where that layer starts, so the emitted deltas stay exact.
+isRelative = strcmpi(cfg.coordinateMode, 'relative');
+P = [0, 0, 0];   % absolute position at the current layer start (run-start frame)
 
 for k = 1:slices.nLayers
     mask = slices.masks(:, :, k);
@@ -43,6 +51,7 @@ for k = 1:slices.nLayers
     layerList(k).z_um = slices.z_um(k);
     layerList(k).scanAxis = axisK;
     layerList(k).pixelCount = pixelCount;
+    layerList(k).startPos_mm = P;
 
     if pixelCount == 0
         warning('nanoscribe3D:EmptyLayer', 'Layer %d is empty; skipping.', k);
@@ -53,13 +62,20 @@ for k = 1:slices.nLayers
         continue;
     end
 
-    sessCfg = makeLayerCfg(cfg, k, slices.z_um(k), axisK, mask);
+    sessCfg = makeLayerCfg(cfg, k, slices.z_um(k), axisK, mask, P, isRelative);
     sSummary = twoD_arbitary_printing_generate(sessCfg);
 
     layerList(k).manifestPath = sSummary.manifestPath;
     layerList(k).outputDir = sessCfg.outputDir;
     layerList(k).scriptCount = sSummary.scriptCount;
     layerList(k).estTime_s = sSummary.estimatedMotionTime_s;
+
+    if isRelative
+        % Engine positions are relative to this layer's start.
+        P = P + sSummary.chunkEndPositions_mm(end, :);
+    else
+        P = sSummary.chunkEndPositions_mm(end, :);
+    end
 end
 
 previewPath = '';
@@ -72,6 +88,7 @@ layers.config = cfg;
 layers.inputPath = cfg.inputPath;
 layers.sourceType = slices.sourceType;
 layers.extent_um = slices.extent_um;
+layers.scaleToTarget = slices.scaleToTarget;
 layers.layerHeight_um = cfg.layerHeight_um;
 layers.nLayers = slices.nLayers;
 layers.layerList = layerList;
@@ -111,9 +128,11 @@ mustBePositiveScalar(cfg.layerHeight_um, 'layerHeight_um');
 mustBePositiveScalar(cfg.xyResolution_um, 'xyResolution_um');
 mustBePositiveScalar(cfg.hatchSpacing_um, 'hatchSpacing_um');
 mustBePositiveScalar(cfg.stlScale_um_per_unit, 'stlScale_um_per_unit');
-mustBePositiveScalar(cfg.targetSizeX_um, 'targetSizeX_um');
-mustBePositiveScalar(cfg.targetSizeY_um, 'targetSizeY_um');
+mustBePositiveScalar(cfg.pixelPitch_um, 'pixelPitch_um');
 mustBePositiveScalar(cfg.maxLayers, 'maxLayers');
+if ~isscalar(cfg.baseHeight_um) || ~isfinite(cfg.baseHeight_um) || cfg.baseHeight_um < 0
+    error('baseHeight_um must be a nonnegative finite scalar.');
+end
 if ~isscalar(cfg.zLayerSign) || ~any(cfg.zLayerSign == [-1 1])
     error('zLayerSign must be +1 or -1.');
 end
@@ -141,10 +160,12 @@ if cfg.savePreview && ~exist(cfg.previewDir, 'dir')
 end
 end
 
-function sc = makeLayerCfg(cfg, k, z_um, axisK, mask)
+function sc = makeLayerCfg(cfg, k, z_um, axisK, mask, P, isRelative)
 % Build a twoD_arbitary_printing config for one layer. Masks are in physical
 % orientation (row 1 at y = 0), so flipY is off; for Y-scan layers the engine
 % receives the transposed mask (its rows = physical Y-lines stepped along X).
+% In relative mode the origins are shifted by the layer's absolute start P so
+% the emitted deltas continue seamlessly from the previous layer (Z-hop).
 sc = twoD_arbitary_printing_config();
 sc.bmpPath = cfg.inputPath;   % not read (maskOverride present); kept for the record
 sc.outputDir = fullfile(cfg.outputDir, sprintf('layer%04d', k));
@@ -152,9 +173,16 @@ sc.previewDir = cfg.previewDir;
 sc.scriptPrefix = sprintf('%s_L%04d', cfg.scriptPrefix, k);
 sc.pixelSize_um = cfg.xyResolution_um;
 sc.lineSpacing_um = cfg.hatchSpacing_um;
-sc.xOrigin_mm = cfg.xOrigin_mm;
-sc.yOrigin_mm = cfg.yOrigin_mm;
-sc.zPosition_mm = cfg.zLayerSign * z_um / 1000;
+zStage_mm = cfg.zLayerSign * z_um / 1000;
+if isRelative
+    sc.xOrigin_mm = cfg.xOrigin_mm - P(1);
+    sc.yOrigin_mm = cfg.yOrigin_mm - P(2);
+    sc.zPosition_mm = zStage_mm - P(3);
+else
+    sc.xOrigin_mm = cfg.xOrigin_mm;
+    sc.yOrigin_mm = cfg.yOrigin_mm;
+    sc.zPosition_mm = zStage_mm;
+end
 sc.leadIn_um = cfg.leadIn_um;
 sc.leadOut_um = cfg.leadOut_um;
 sc.writeSpeed_mm_s = cfg.writeSpeed_mm_s;
@@ -176,7 +204,7 @@ sc.aerotechDotNetDir = cfg.aerotechDotNetDir;
 sc.savePreview = false;
 sc.overwriteOutput = cfg.overwriteOutput;
 sc.requireRunConfirmation = cfg.requireRunConfirmation;
-sc.returnToStart = true;
+sc.returnToStart = false;   % Z-hop transitions: continue from the layer end
 sc.scanAxis = axisK;
 if strcmp(axisK, 'y')
     sc.maskOverride = mask.';
@@ -220,6 +248,8 @@ fprintf(fid, 'Layer height: %.6g um   XY resolution: %.6g um   Hatch: %.6g um\r\
     cfg.layerHeight_um, cfg.xyResolution_um, cfg.hatchSpacing_um);
 fprintf(fid, 'Cross-hatch: %d   zLayerSign: %+d   First layer offset: %.6g um\r\n', ...
     cfg.crossHatch, cfg.zLayerSign, cfg.firstLayerZOffset_um);
+fprintf(fid, 'Scale to target: %.9g   Base height: %.6g um   Layer transition: Z-hop\r\n', ...
+    layers.scaleToTarget, cfg.baseHeight_um);
 fprintf(fid, 'Layers: %d (%d written)   Total chunks: %d   Total est time: %.3f s\r\n', ...
     layers.nLayers, layers.writtenLayerCount, layers.totalScriptCount, layers.totalEstTime_s);
 if layers.oddCrossingRows > 0

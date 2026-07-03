@@ -27,14 +27,23 @@ cfg.scriptPrefix = 'nanoscribe3D_arbitary_printing';
 cfg.stlScale_um_per_unit = 1000;
 
 %% Heightmap interpretation (.mat input)
-% The heightmap is resampled (interp2) onto the slice grid over this footprint,
-% then converted to height: height_um = heightScale_um_per_unit*value + heightOffset_um.
-% Each layer's mask is (height_um >= layer mid-plane z).
-cfg.targetSizeX_um = 100.0;
-cfg.targetSizeY_um = 100.0;
-cfg.interpMethod = 'linear';
-cfg.heightScale_um_per_unit = 1.0;
-cfg.heightOffset_um = 0.0;
+% Pixel-exact raster (same logic as 3D_Printer_construct/heightmap_to_segments):
+% no interpolation and no contour pairing. Each output grid cell looks up its
+% nearest source pixel, and a cell is written when its height reaches the layer
+% mid-plane: height_um >= z_k.
+%   height_um = max(value, 0) * heightScale_um_per_unit * scale + baseHeight_um
+cfg.pixelPitch_um = 1.0;             % source pixel pitch (um per pixel)
+cfg.heightScale_um_per_unit = 1.0;   % um of height per matrix unit (before scaling)
+
+% Support base added under the whole footprint (a solid slab of this thickness
+% is printed first). Use 0 when the model already includes its base.
+cfg.baseHeight_um = 0.0;
+
+%% Footprint scaling (heightmap and STL)
+% Uniform scale so the larger XY span equals this target (aspect ratio is
+% preserved; heights scale by the same factor, true 3D scaling). A [maxX maxY]
+% pair scales by the tighter of the two. Empty [] keeps the native size.
+cfg.targetMaxXY_um = [];
 
 %% Slicing
 cfg.layerHeight_um = 0.5;      % Z step between layers (slice thickness)
@@ -47,8 +56,13 @@ cfg.crossHatch = true;
 
 % Layer k is written at zPosition = zLayerSign*(firstLayerZOffset + (k-1/2)*layerHeight).
 % With a fixed objective the stage moves toward -Z to build upward, so keep -1.
+% (Same as StageZConvention=true in 3D_Printer_construct.)
 cfg.zLayerSign = -1;
 cfg.firstLayerZOffset_um = 0.0;
+
+% Between layers the toolpath Z-hops: the next layer continues from wherever the
+% previous layer ended and only Z changes to the new plane (no return to the
+% start corner). Implemented by per-layer origin bookkeeping in the generator.
 
 % Safety cap on the number of layers (guards against a wrong layerHeight).
 cfg.maxLayers = 2000;

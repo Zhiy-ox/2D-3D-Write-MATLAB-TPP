@@ -221,7 +221,9 @@ Registration relies on each session returning to the physical start (`returnToSt
 
 ## Nanoscribe-style Layer-by-Layer 3D Printing
 
-This workflow does true 3D printing: the model is sliced into layers, each layer is written as a hatched 2D slice at its own Z, and the stage steps one layer height between layers. Input is an **STL mesh** (sliced with an even-odd scanline fill) or a **.mat heightmap** (extruded: each layer's mask is `height >= layer mid-plane z`). Output is chunked `.ab` files per layer, run in order on the Aerotech stage.
+This workflow does true 3D printing: the model is sliced into layers, each layer is written as a hatched 2D slice at its own Z, and the stage steps one layer height between layers. Input is an **STL mesh** (sliced with an even-odd scanline fill) or a **.mat heightmap** (pixel-exact raster). Output is chunked `.ab` files per layer, run in order on the Aerotech stage.
+
+The slicing logic follows [3D_Printer_construct](https://github.com/Zhiy-ox/3D_Printer_construct) (`heightmap_to_segments`): the heightmap path is **pixel-exact** (each output grid cell looks up its nearest source pixel — no interpolation, no contour pairing), supports a **base height** slab, scales **uniformly** to a target XY span (aspect and Z scale together), and layers are joined by **Z-hop transitions** (the next layer continues from wherever the previous one ended; only Z changes).
 
 ### GUI use
 
@@ -229,7 +231,7 @@ This workflow does true 3D printing: the model is sliced into layers, each layer
 nanoscribe3D_arbitary_printing      % or the "Nanoscribe 3D Print" tab in arbitary_printing
 ```
 
-1. Choose the model (`.stl` or `.mat`). For STL set the unit scale (1000 for a mesh authored in mm); for a heightmap set the footprint, height scale/offset, and interpolation on the `Input` tab.
+1. Choose the model (`.stl` or `.mat`). On the `Input` tab set the STL unit scale (1000 for a mesh authored in mm), the heightmap pixel pitch and height scale, an optional base height, and an optional target max XY (0 = native size; scales XY and Z uniformly).
 2. On the `Slicing` tab set layer height, XY resolution (written pixel size), hatch spacing, crosshatch, and the Z direction (`Layers build toward -Z` for a fixed objective).
 3. `Slice Preview` shows every layer with a slider; `3D View` shows the mesh / height surface.
 4. `Generate Layers`, check the `Summary` / `Layers` tabs, position the stage at the print origin (first-layer focus), then `Run Layers`. `From`/`To` allow resuming from a specific layer.
@@ -238,8 +240,11 @@ nanoscribe3D_arbitary_printing      % or the "Nanoscribe 3D Print" tab in arbita
 
 ```matlab
 cfg = nanoscribe3D_arbitary_printing_config();
-cfg.inputPath = fullfile(pwd, 'model.stl');
+cfg.inputPath = fullfile(pwd, 'model.stl');   % or a .mat heightmap
 cfg.stlScale_um_per_unit = 1000;   % STL authored in mm
+cfg.pixelPitch_um = 6;             % heightmap: 6 um per source pixel
+cfg.baseHeight_um = 0.5;           % heightmap: add a 0.5 um support base
+cfg.targetMaxXY_um = 1005;         % scale so the larger XY span is 1.005 mm ([] = native)
 cfg.layerHeight_um = 0.5;
 cfg.xyResolution_um = 0.5;
 cfg.hatchSpacing_um = 0.5;
@@ -249,10 +254,12 @@ nanoscribe3D_arbitary_printing_run(layers.layersPath);
 
 ### Key settings and behavior
 
-- **`layerHeight_um`** — Z step between layers. Layer `k` is written at `z = zLayerSign*(firstLayerZOffset_um + (k-1/2)*layerHeight_um)`; with a fixed objective the stage moves toward −Z to build upward (`zLayerSign = -1`, default).
+- **`layerHeight_um`** — Z step between layers. Layer `k` is written at `z = zLayerSign*(firstLayerZOffset_um + (k-1/2)*layerHeight_um)`; with a fixed objective the stage moves toward −Z to build upward (`zLayerSign = -1`, default; equivalent to `StageZConvention = true` in 3D_Printer_construct).
 - **`xyResolution_um`** — slice-grid pitch = written pixel size along a scan line. **`hatchSpacing_um`** — spacing between scan lines within a layer.
-- **`crossHatch`** — odd layers hatch along X, even layers along Y (isotropic in-plane strength). Implemented via the 2D engine's `scanAxis` option; with crosshatch off all layers hatch along X.
-- Every layer **returns to the physical start** (net-zero displacement), so relative chaining across hundreds of layers cannot drift; the only net motion between layers is the Z step in each layer's first moves. The return move dives back to the start corner at the first-layer plane at reposition speed — the same fast-traverse dose model as the rest of this repo; verify the dose is harmless before a high-value print.
+- **`crossHatch`** — odd layers hatch along X, even layers along Y (the reference repo's `WoodpileMode`). Implemented via the 2D engine's `scanAxis` option; with crosshatch off all layers hatch along X.
+- **Heightmap raster is pixel-exact** (`pixelPitch_um`, `heightScale_um_per_unit`): each output cell reads its nearest source pixel, so sharp pixel edges are preserved exactly — no interpolation smoothing, no contour-pairing artifacts. NaN and negative source values count as height 0. **`baseHeight_um`** adds a solid slab under the whole footprint (use 0 when the model already includes its base).
+- **`targetMaxXY_um`** — uniform scale so the larger XY span equals the target (`[maxX maxY]` scales by the tighter constraint); heights scale by the same factor. Empty/0 keeps the native size.
+- **Z-hop layer transitions**: the next layer continues from wherever the previous layer ended and only Z steps to the new plane — the focus never dives back through the printed structure. In relative mode this is exact by construction (each layer's origins are shifted by its true start position). Resuming from a middle layer therefore requires the stage at that layer's recorded start position (`layerList(k).startPos_mm` in the layers index).
 - STL meshes should be **watertight**; open meshes produce odd-crossing warnings and per-row artifacts (visible in the slice preview).
 - `maxLayers` caps the layer count to guard against a mistyped layer height; empty layers are skipped.
 
